@@ -143,6 +143,9 @@ class MongoConnection:
     async def __aexit__(self, exc_type, exc_val, exc_tb):
         await self.client.close()
 
+
+mongo_connection = MongoConnection()
+
 def user_helper(user) -> dict:
     """
     Helper function to create a dictionary from user data.
@@ -161,6 +164,14 @@ def user_helper(user) -> dict:
         "age": user["age"],
     }
 
+async def add_user(user_data: dict) -> dict:
+    """
+       Add a new user to the database.
+   """
+    user = await mongo_connection.user1.insert_one(user_data)
+    new_user = await mongo_connection.user1.find_one({"_id": user.inserted_id})
+    return user_helper(new_user)
+
 
 async def get_users():
     """
@@ -170,24 +181,17 @@ async def get_users():
         list: List of dictionaries containing user data.
     """
     users = []
-    async for user in MongoConnection().user1.find():
+    async for user in mongo_connection.user1.find():
         users.append(user_helper(user))
     return users
 
-async def add_user(user_data: dict) -> dict:
-    """
-       Add a new user to the database.
-   """
-    user = await MongoConnection().user1.insert_one(user_data)
-    new_user = await MongoConnection().user1.find_one({"_id": user.inserted_id})
-    return user_helper(new_user)
 
 
 async def retrieve_user(id: str) -> dict:
     """
     Retrieve a user with a matching ID from the database.
     """
-    user = await MongoConnection().user1.find_one({"_id": ObjectId(id)})
+    user = await mongo_connection.user1.find_one({"_id": ObjectId(id)})
     if user:
         return user_helper(user)
 
@@ -198,9 +202,9 @@ async def update_user(id: str, data: dict):
     """
     if len(data) < 1:
         return False
-    user = await MongoConnection().user1.find_one({"_id": ObjectId(id)})
+    user = await mongo_connection.user1.find_one({"_id": ObjectId(id)})
     if user:
-        updated_user = await MongoConnection().user1.update_one(
+        updated_user = await mongo_connection.user1.update_one(
             {"_id": ObjectId(id)}, {"$set": data}
         )
         if updated_user:
@@ -212,9 +216,9 @@ async def delete_user(id: str):
     """
     Delete a user with a matching ID from the database.
     """
-    user = await MongoConnection().user1.find_one({"_id": ObjectId(id)})
+    user = await mongo_connection.user1.find_one({"_id": ObjectId(id)})
     if user:
-        await MongoConnection().user1.delete_one({"_id": ObjectId(id)})
+        await mongo_connection.user1.delete_one({"_id": ObjectId(id)})
         return True
 
 
@@ -223,26 +227,21 @@ def team_helper(team, users) -> dict:
     Helper function to create a dictionary from team data.
     """
     members = team["members"]
-    sorted_members = sorted(
-        (user for user in users if user["id"] in members),
-        key=lambda member: member["age"]
-    )
+
+    sorted_members = []
+    for user in users:
+        if user["id"] in members:
+            sorted_members.append({
+                "name": user["name"],
+                "age": user["age"]
+            })
+
+    sorted_members.sort(key=lambda member: member["age"])
+
     return {
-        "id": str(team["_id"]),
         "title": team["title"],
         "members": sorted_members,
     }
-
-
-async def get_teams():
-    """
-    Retrieve a list of all teams from the database.
-    """
-    users = await get_users()
-    teams = []
-    async for team in MongoConnection().teams.find():
-        teams.append(team_helper(team, users))
-    return teams
 
 
 async def add_team(team_data: dict) -> dict:
@@ -255,6 +254,19 @@ async def add_team(team_data: dict) -> dict:
     Returns:
         dict: Dictionary containing data of the added team.
     """
-    team = await MongoConnection().teams.insert_one(team_data)
-    new_team = await MongoConnection().teams.find_one({"_id": team.inserted_id})
+    team = await mongo_connection.teams.insert_one(team_data)
+    new_team = await mongo_connection.teams.find_one({"_id": team.inserted_id})
     return team_helper(new_team)
+
+
+async def get_teams():
+    """
+    Retrieve a list of all teams from the database.
+    """
+    users = await get_users()
+    teams = []
+    async for team in mongo_connection.teams.find():
+        teams.append(team_helper(team, users))
+    return teams
+
+
